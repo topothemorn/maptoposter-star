@@ -492,6 +492,7 @@ def create_poster(
     display_city=None,
     display_country=None,
     fonts=None,
+    marker_point=None,
 ):
     """
     Generate a complete map poster with roads, water, parks, and typography.
@@ -510,6 +511,7 @@ def create_poster(
         height: Poster height in inches (default: 16)
         country_label: Optional override for country text on poster
         _name_label: Optional override for city name (unused, reserved for future use)
+        marker_point: Optional (latitude, longitude) tuple to mark with a star
 
     Raises:
         RuntimeError: If street network data cannot be retrieved
@@ -610,13 +612,33 @@ def create_poster(
     ax.set_xlim(crop_xlim)
     ax.set_ylim(crop_ylim)
 
-    # Layer 3: Gradients (Top and Bottom)
-    create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
-    create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
-
     # Calculate scale factor based on smaller dimension (reference 12 inches)
     # This ensures text scales properly for both portrait and landscape orientations
     scale_factor = min(height, width) / 12.0
+
+    # Layer 3: Marker (optional)
+    if marker_point is not None:
+        marker_lat, marker_lon = marker_point
+        marker_geom = ox.projection.project_geometry(
+            Point(marker_lon, marker_lat),
+            crs="EPSG:4326",
+            to_crs=g_proj.graph["crs"],
+        )[0]
+        marker_size = 120 * scale_factor
+        ax.scatter(
+            [marker_geom.x],
+            [marker_geom.y],
+            marker="*",
+            s=marker_size,
+            color=THEME["text"],
+            edgecolors=THEME["bg"],
+            linewidths=0.6 * scale_factor,
+            zorder=9.5,
+        )
+
+    # Layer 4: Gradients (Top and Bottom)
+    create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
+    create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
 
     # Base font sizes (at 12 inches width)
     BASE_MAIN = 60
@@ -784,6 +806,7 @@ Examples:
   # Iconic grid patterns
   python create_map_poster.py -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
   python create_map_poster.py -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district grid
+  python create_map_poster.py -c "New York" -C "USA" -l 40.776676 -73.971321 --star  # Star marker at center
 
   # Waterfront & canals
   python create_map_poster.py -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
@@ -818,6 +841,7 @@ Options:
   --theme, -t       Theme name (default: terracotta)
   --all-themes      Generate posters for all themes
   --distance, -d    Map radius in meters (default: 18000)
+  --star            Place a star marker at the map center
   --list-themes     List all available themes
 
 Distance guide:
@@ -954,6 +978,11 @@ Examples:
         choices=["png", "svg", "pdf"],
         help="Output format for the poster (default: png)",
     )
+    parser.add_argument(
+        "--star",
+        action="store_true",
+        help="Place a star marker at the map center",
+    )
 
     args = parser.parse_args()
 
@@ -1023,6 +1052,7 @@ Examples:
         for theme_name in themes_to_generate:
             THEME = load_theme(theme_name)
             output_file = generate_output_filename(args.city, theme_name, args.format)
+            marker_point = coords if args.star else None
             create_poster(
                 args.city,
                 args.country,
@@ -1036,6 +1066,7 @@ Examples:
                 display_city=args.display_city,
                 display_country=args.display_country,
                 fonts=custom_fonts,
+                marker_point=marker_point,
             )
 
         print("\n" + "=" * 50)
